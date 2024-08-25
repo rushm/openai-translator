@@ -1,93 +1,91 @@
-# OpenAI-Translator
+【gradio_server.py修改内容】
+/*
+def translation(input_file, source_language, target_language, translation_style):
+    LOG.debug(f"[翻译任务]\n源文件: {input_file.name}\n源语言: {source_language}\n目标语言: {target_language}\n翻译风格：{translation_style}")
 
-<p align="center">
-    <br> <a href="README.md"> English </a> | 中文
-</p>
-<p align="center">
-    <em>所有的代码和文档完全由 OpenAI 的 GPT-4 模型生成</em>
-</p>
+    output_file_path = Translator.translate_pdf(
+        input_file.name, source_language=source_language, target_language=target_language, translation_style=translation_style)
 
-## 介绍
+    return output_file_path
 
-OpenAI 翻译器是一个使用 AI 技术将英文 PDF 书籍翻译成中文的工具。这个工具使用了大型语言模型 (LLMs)，如 ChatGLM 和 OpenAI 的 GPT-3 以及 GPT-3.5 Turbo 来进行翻译。它是用 Python 构建的，并且具有灵活、模块化和面向对象的设计。
+def launch_gradio():
 
-## 为什么做这个项目
+    iface = gr.Interface(
+        fn=translation,
+        title="OpenAI-Translator v2.0(PDF 电子书翻译工具)",
+        inputs=[
+            gr.File(label="上传PDF文件"),
+            gr.Textbox(label="源语言（默认：英文）", placeholder="English", value="English"),
+            gr.Textbox(label="目标语言（默认：中文）", placeholder="Chinese", value="Chinese"),
+            gr.Textbox(label="翻译风格（默认：小说）", placeholder="novel", value="novel")
+        ],
+        outputs=[
+            gr.File(label="下载翻译文件")
+        ],
+        allow_flagging="never"
+    )
+*/ translation函数添加 translation_style 翻译风格参数，launch 函数添加翻译风格标签，默认为小说
 
-在现今的环境中，缺乏非商业而且有效的 PDF 翻译工具。很多用户有包含敏感数据的 PDF 文件，他们更倾向于不将其上传到公共商业服务网站，以保护隐私。这个项目就是为了解决这个问题，为需要翻译他们的 PDF 文件同时又要保护数据隐私的用户提供解决方案。
+【pdf_translator.py修改内容】
+/*
+def translate_pdf(self,
+                    input_file: str,
+                    output_file_format: str = 'markdown',
+                    source_language: str = "English",
+                    target_language: str = 'Chinese',
+                    translation_style: str = 'novel',
+                    pages: Optional[int] = None):
+        
+        self.book = self.pdf_parser.parse_pdf(input_file, pages)
 
-## 示例结果
+        for page_idx, page in enumerate(self.book.pages):
+            for content_idx, content in enumerate(page.contents):
+                # Translate content.original
+                translation, status = self.translate_chain.run(content, source_language, target_language, translation_style)
+                # Update the content in self.book.pages directly
+                self.book.pages[page_idx].contents[content_idx].set_translation(translation, status)
+        
+        return self.writer.save_translated_book(self.book, output_file_format)
+*/ translate_pdf函数添加 translation_style 翻译风格参数,默认为小说
 
-OpenAI 翻译器目前还处于早期开发阶段，我正在积极地添加更多功能和改进其性能。我们非常欢迎任何反馈或贡献！
+【translation_chain.py修改内容】
+/*
+class TranslationChain:
+    def __init__(self, model_name: str = "gpt-3.5-turbo", verbose: bool = True):
+        
+        # 翻译任务指令始终由 System 角色承担
+        template = (
+            """You are a translation expert, proficient in various languages and support stylized translation. \n
+            Translates {source_language} to {target_language},the translation style is {translation_style}."""
+        )
+        system_message_prompt = SystemMessagePromptTemplate.from_template(template)
 
-![The_Old_Man_of_the_Sea](images/sample_image_0.png)
+        # 待翻译文本由 Human 角色输入
+        human_template = "{text}"
+        human_message_prompt = HumanMessagePromptTemplate.from_template(human_template)
 
-<p align="center">
-    <em>"老人与海"</em>
-</p>
+        # 使用 System 和 Human 角色的提示模板构造 ChatPromptTemplate
+        chat_prompt_template = ChatPromptTemplate.from_messages(
+            [system_message_prompt, human_message_prompt]
+        )
 
-## 特性
+        # 为了翻译结果的稳定性，将 temperature 设置为 0
+        chat = ChatOpenAI(model_name=model_name, temperature=0, verbose=verbose)
 
-- [X] 使用大型语言模型 (LLMs) 将英文 PDF 书籍翻译成中文。
-- [X] 支持 ChatGLM 和 OpenAI 模型。
-- [X] 通过 YAML 文件或命令行参数灵活配置。
-- [X] 对健壮的翻译操作进行超时和错误处理。
-- [X] 模块化和面向对象的设计，易于定制和扩展。
-- [x] 添加对其他语言和翻译方向的支持。
-- [ ] 实现图形用户界面 (GUI) 以便更易于使用。
-- [ ] 创建一个网络服务或 API，以便在网络应用中使用。
-- [ ] 添加对多个 PDF 文件的批处理支持。
-- [ ] 添加对保留源 PDF 的原始布局和格式的支持。
-- [ ] 通过使用自定义训练的翻译模型来提高翻译质量。
+        self.chain = LLMChain(llm=chat, prompt=chat_prompt_template, verbose=verbose)
 
+    def run(self, text: str, source_language: str, target_language: str, translation_style: str) -> (str, bool):
+        result = ""
+        try:
+            result = self.chain.run({
+                "text": text,
+                "source_language": source_language,
+                "target_language": target_language,
+                "translation_style": translation_style,
+            })
+        except Exception as e:
+            LOG.error(f"An error occurred during translation: {e}")
+            return result, False
 
-## 开始使用
-
-### 环境准备
-
-1.克隆仓库 `git clone git@github.com:DjangoPeng/openai-translator.git`。
-
-2.OpenAI-翻译器 需要 Python 3.10 或更高版本。使用 `pip install -r requirements.txt` 安装依赖项。
-
-3.设置您的 OpenAI API 密钥(`$OPENAI_API_KEY`)。您可以将其添加到环境变量中，或者在 config.yaml 文件中指定。
-
-### 使用示例
-
-您可以通过指定配置文件或提供命令行参数来使用 OpenAI-Translator 工具。
-
-#### 使用配置文件
-
-根据您的设置调整 `config.yaml` 文件：
-
-```yaml
-model_name: "gpt-3.5-turbo"
-input_file: "tests/test.pdf"
-output_file_format: "markdown"
-source_language: "English"
-target_language: "Chinese"
-```
-
-然后命令行直接运行：
-
-```bash
-python ai_translator/main.py
-```
-
-![sample_out](images/sample_image_1.png)
-
-#### 使用命令行参数
-
-您也可以直接在命令行上指定设置。这是使用 OpenAI 模型的例子：
-
-```bash
-# 将您的 api_key 设置为环境变量
-export OPENAI_API_KEY="sk-xxx"
-python ai_translator/main.py --model_name "gpt-3.5-turbo" --input_file "your_input.pdf" --output_file_format "markdown" --source_language "English" --target_language "Chinese"
-```
-
-## 许可证
-
-该项目采用 GPL-3.0 许可证。有关详细信息，请查看 [LICENSE](LICENSE) 文件。
-
-
-
-
+        return result, True
+*/ template添加翻译风格变量{translation_style}，run方法添加translation_style参数
